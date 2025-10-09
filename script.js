@@ -12,16 +12,34 @@ class TwitchStreamViewer {
         // Twitch API Configuration
         this.clientId = 'YOUR_TWITCH_CLIENT_ID'; // Enter your Twitch Client ID here
         this.streamers = this.loadStreamersFromStorage() || [
-            'xqcow',
-            'shroud',
-            'ninja',
-            'pokimane',
-            'summit1g',
-            'lirik',
-            'sodapoppin',
-            'drdisrespect',
-            'timthetatman',
-            'asmongold'
+            'al3xxandra',
+            'AnnieFuchsia',
+            'asuna_qt',
+            'Bears_Adventures',
+            'DesiHeat',
+            'Lmgd',
+            'MeeresTV',
+            'MetaGoblin',
+            'Metashi12',
+            'Moosfortune',
+            'Morgana',
+            'Niv78',
+            'NoHitJerome',
+            'NzSkyy',
+            'Opie',
+            'Payo',
+            'Rycn',
+            'Sakuria',
+            'Scottejaye',
+            'Scripe',
+            'Triplebz',
+            'Twickel',
+            'Vareion',
+            'WillE',
+            'xaryu',
+            'xerwo',
+            'Naguura',
+            'Fragnance'
         ];
         
         this.init();
