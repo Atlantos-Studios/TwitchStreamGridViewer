@@ -271,6 +271,11 @@ body {
     border-color: #335533;
 }
 
+.folder-action-btn.delete-folder-btn:hover {
+    background: #552222;
+    border-color: #663333;
+}
+
 .folder-content {
     margin-left: 1rem;
     display: none;
@@ -748,6 +753,20 @@ body {
 }
 
 .hide-stream-btn:hover {
+    background: #444444;
+}
+
+.stream-info-btn {
+    background: #333333;
+    color: white;
+    border: 1px solid #555555;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.stream-info-btn:hover {
     background: #444444;
 }
 

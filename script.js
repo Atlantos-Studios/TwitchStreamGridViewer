@@ -8,6 +8,7 @@ class TwitchStreamViewer {
         this.folderStates = this.loadFolderStatesFromStorage() || {};
         this.currentStreamForFolder = null;
         this.currentStreamForRemoval = null;
+        this.currentFolderForDeletion = null;
         
         // Twitch API Configuration
         this.clientId = 'YOUR_TWITCH_CLIENT_ID'; // Enter your Twitch Client ID here
@@ -201,6 +202,25 @@ class TwitchStreamViewer {
             }
         });
         
+        // Delete folder popup event listeners
+        document.getElementById('closeDeleteFolderPopup').addEventListener('click', () => {
+            this.closeDeleteFolderPopup();
+        });
+        
+        document.getElementById('confirmDeleteFolder').addEventListener('click', () => {
+            this.confirmDeleteFolder();
+        });
+        
+        document.getElementById('cancelDeleteFolder').addEventListener('click', () => {
+            this.closeDeleteFolderPopup();
+        });
+        
+        document.getElementById('deleteFolderPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'deleteFolderPopup') {
+                this.closeDeleteFolderPopup();
+            }
+        });
+        
         // Add folder popup event listeners
         document.getElementById('closeAddFolderPopup').addEventListener('click', () => {
             this.closeAddFolderPopup();
@@ -326,6 +346,11 @@ class TwitchStreamViewer {
         hideBtn.textContent = 'Hide';
         hideBtn.addEventListener('click', () => this.hideStream(stream.id));
         
+        const infoBtn = document.createElement('button');
+        infoBtn.className = 'stream-info-btn';
+        infoBtn.textContent = 'Info';
+        infoBtn.addEventListener('click', () => this.openOnTwitchAbout(stream.id));
+        
         const openTwitchBtn = document.createElement('button');
         openTwitchBtn.className = 'open-twitch-btn';
         openTwitchBtn.textContent = 'Twitch';
@@ -339,6 +364,7 @@ class TwitchStreamViewer {
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'stream-buttons';
         buttonContainer.appendChild(hideBtn);
+        buttonContainer.appendChild(infoBtn);
         buttonContainer.appendChild(openTwitchBtn);
         buttonContainer.appendChild(removeBtn);
         
@@ -439,6 +465,53 @@ class TwitchStreamViewer {
         streams.forEach(({ id: streamId }) => this.showStream(streamId));
     }
     
+    showDeleteFolderPopup(folderName) {
+        if (folderName === 'No Folder') return;
+        this.currentFolderForDeletion = folderName;
+        const message = document.getElementById('deleteFolderMessage');
+        message.textContent = `Delete folder "${folderName}"? All streamers in this folder will be moved to "No Folder".`;
+        document.getElementById('deleteFolderPopup').style.display = 'flex';
+    }
+    
+    closeDeleteFolderPopup() {
+        document.getElementById('deleteFolderPopup').style.display = 'none';
+        this.currentFolderForDeletion = null;
+    }
+    
+    confirmDeleteFolder() {
+        const folderName = this.currentFolderForDeletion;
+        if (folderName) {
+            this.deleteFolder(folderName);
+        }
+        this.closeDeleteFolderPopup();
+    }
+    
+    deleteFolder(folderName) {
+        if (folderName === 'No Folder') return;
+        if (!this.folders[folderName]) return;
+        
+        const streamIdsInFolder = this.getStreamIdsInFolder(folderName);
+        streamIdsInFolder.forEach(streamId => {
+            delete this.streamFolders[streamId];
+        });
+        delete this.folders[folderName];
+        delete this.folderStates[folderName];
+        
+        this.saveFoldersToStorage();
+        this.saveStreamFoldersToStorage();
+        this.saveFolderStatesToStorage();
+        
+        streamIdsInFolder.forEach(streamId => {
+            const streamElement = document.getElementById(`stream-${streamId}`);
+            if (streamElement) {
+                this.updateStreamFolderButton(streamElement, streamId);
+            }
+        });
+        
+        this.updateHiddenStreamsList();
+        this.showNotification(`Folder "${folderName}" deleted.`, 'success');
+    }
+    
     createFolderSection(folderName, streams) {
         const folderSection = document.createElement('div');
         folderSection.className = 'folder-section';
@@ -484,6 +557,17 @@ class TwitchStreamViewer {
         
         headerActions.appendChild(hideAllBtn);
         headerActions.appendChild(showAllBtn);
+        
+        if (folderName !== 'No Folder') {
+            const deleteFolderBtn = document.createElement('button');
+            deleteFolderBtn.className = 'folder-action-btn delete-folder-btn';
+            deleteFolderBtn.textContent = 'X';
+            deleteFolderBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showDeleteFolderPopup(folderName);
+            });
+            headerActions.appendChild(deleteFolderBtn);
+        }
         
         folderHeader.appendChild(titleRow);
         folderHeader.appendChild(headerActions);
@@ -832,6 +916,11 @@ class TwitchStreamViewer {
         window.open(twitchUrl, '_blank');
     }
     
+    openOnTwitchAbout(streamName) {
+        const twitchUrl = `https://www.twitch.tv/${streamName}/about`;
+        window.open(twitchUrl, '_blank');
+    }
+    
     // File operations for save/load
     saveStreamsToFile() {
         const data = {
@@ -1110,6 +1199,7 @@ class TwitchStreamViewer {
             this.updateStreamFolderButton(streamElement, streamId);
         }
         
+        this.updateHiddenStreamsList();
         this.showNotification(`Stream assigned to folder: ${folderName}`, 'success');
     }
     
@@ -1123,6 +1213,7 @@ class TwitchStreamViewer {
             this.updateStreamFolderButton(streamElement, streamId);
         }
         
+        this.updateHiddenStreamsList();
         this.showNotification('Stream removed from folder', 'success');
     }
     
