@@ -131,6 +131,15 @@ body {
     background: #ff0000;
 }
 
+.btn-bulk {
+    background: #333333;
+    border-color: #555555;
+}
+
+.btn-bulk:hover {
+    background: #444444;
+}
+
 .btn-folder {
     background: #333333;
     border-color: #555555;
@@ -235,6 +244,41 @@ body {
     min-width: 400px;
     max-width: 500px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.popup-content-wide {
+    min-width: 450px;
+    max-width: 560px;
+}
+
+.popup-textarea {
+    width: 100%;
+    min-height: 180px;
+    background: #222222;
+    color: #ffffff;
+    border: 1px solid #444444;
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.popup-textarea:focus {
+    outline: none;
+    border-color: #666666;
+}
+
+.popup-textarea::placeholder {
+    color: #888888;
+}
+
+.bulk-import-hint {
+    color: #888888;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
 }
 
 .popup-header {

@@ -81,6 +81,28 @@ class TwitchStreamViewer {
             this.addNewFolder();
         });
         
+        document.getElementById('bulkImport').addEventListener('click', () => {
+            this.showBulkImportPopup();
+        });
+        
+        document.getElementById('closeBulkImportPopup').addEventListener('click', () => {
+            this.closeBulkImportPopup();
+        });
+        
+        document.getElementById('confirmBulkImport').addEventListener('click', () => {
+            this.confirmBulkImport();
+        });
+        
+        document.getElementById('cancelBulkImport').addEventListener('click', () => {
+            this.closeBulkImportPopup();
+        });
+        
+        document.getElementById('bulkImportPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'bulkImportPopup') {
+                this.closeBulkImportPopup();
+            }
+        });
+        
         // Folder popup event listeners
         document.getElementById('closeFolderPopup').addEventListener('click', () => {
             this.closeFolderPopup();
@@ -451,6 +473,61 @@ class TwitchStreamViewer {
         
         // Show success message
         this.showNotification(`Streamer "${streamName}" has been added!`, 'success');
+    }
+    
+    showBulkImportPopup() {
+        const popup = document.getElementById('bulkImportPopup');
+        const textarea = document.getElementById('bulkImportInput');
+        textarea.value = '';
+        popup.style.display = 'flex';
+        textarea.focus();
+    }
+    
+    closeBulkImportPopup() {
+        document.getElementById('bulkImportPopup').style.display = 'none';
+        document.getElementById('bulkImportInput').value = '';
+    }
+    
+    confirmBulkImport() {
+        const textarea = document.getElementById('bulkImportInput');
+        const raw = textarea.value.trim();
+        
+        if (!raw) {
+            this.showNotification('Please enter at least one streamer name.', 'error');
+            return;
+        }
+        
+        const names = raw
+            .split(/[\n,;]+/)
+            .map(s => s.trim().toLowerCase())
+            .filter(s => s.length > 0);
+        
+        const validPattern = /^[a-zA-Z0-9_]+$/;
+        const added = [];
+        const skipped = [];
+        
+        for (const name of names) {
+            if (!validPattern.test(name)) {
+                skipped.push(name);
+                continue;
+            }
+            if (this.streamers.includes(name)) {
+                skipped.push(name);
+                continue;
+            }
+            this.streamers.push(name);
+            this.saveStreamersToStorage();
+            this.addSingleStream(name);
+            added.push(name);
+        }
+        
+        this.closeBulkImportPopup();
+        
+        if (added.length > 0) {
+            this.showNotification(`${added.length} streamer(s) added. ${skipped.length} skipped (duplicates or invalid).`, 'success');
+        } else {
+            this.showNotification('No new streamers added. Check for duplicates or invalid names (letters, numbers, underscores only).', 'warning');
+        }
     }
     
     async addSingleStream(streamName) {

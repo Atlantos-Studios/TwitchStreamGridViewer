@@ -14,6 +14,7 @@
                 <div class="add-stream-controls">
                     <input type="text" id="streamNameInput" placeholder="Enter streamer name..." class="stream-input">
                     <button id="addStream" class="btn btn-add">Add Stream</button>
+                    <button id="bulkImport" class="btn btn-bulk">Bulk Import</button>
                     <button id="addFolder" class="btn btn-folder">Add Folder</button>
                 </div>
                 <div class="file-controls">
@@ -91,6 +92,25 @@
                 <div class="popup-buttons">
                     <button id="createFolder" class="btn btn-primary">Create Folder</button>
                     <button id="cancelAddFolder" class="btn btn-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bulk Import Popup -->
+    <div id="bulkImportPopup" class="popup-overlay" style="display: none;">
+        <div class="popup-content popup-content-wide">
+            <div class="popup-header">
+                <h3>Bulk Import Streamers</h3>
+                <button id="closeBulkImportPopup" class="popup-close">&times;</button>
+            </div>
+            <div class="popup-body">
+                <label for="bulkImportInput" class="popup-label">Enter streamer names (one per line or comma-separated):</label>
+                <textarea id="bulkImportInput" class="popup-textarea" placeholder="streamer1&#10;streamer2&#10;streamer3"></textarea>
+                <p class="bulk-import-hint">Invalid names and duplicates will be skipped.</p>
+                <div class="popup-buttons">
+                    <button id="confirmBulkImport" class="btn btn-primary">Add Streamers</button>
+                    <button id="cancelBulkImport" class="btn btn-cancel">Cancel</button>
                 </div>
             </div>
         </div>
