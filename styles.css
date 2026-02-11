@@ -51,10 +51,27 @@ body {
     align-items: center;
 }
 
-.file-controls {
+.btn-settings {
+    background: #333333;
+    border-color: #555555;
+}
+
+.btn-settings:hover {
+    background: #444444;
+}
+
+.settings-buttons {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.popup-section-label {
+    color: #aaaaaa;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
 }
 
 .stream-input {
@@ -181,27 +198,77 @@ body {
 }
 
 .folder-section {
-    margin-bottom: 1rem;
+    margin-bottom: 0.2rem;
 }
 
 .folder-header {
     display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 0.5rem;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.4rem 0.5rem;
     background: #222222;
     border-radius: 4px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
 }
 
-.folder-header:hover {
-    background: #333333;
+.folder-title-row {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin: -0.15rem 0;
 }
 
-.folder-toggle {
-    margin-right: 0.5rem;
-    font-weight: bold;
+.folder-title-row:hover {
+    color: #cccccc;
+}
+
+.folder-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.folder-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 600;
     color: #ffffff;
+    background: #555555;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.folder-header-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.folder-action-btn {
+    background: #333333;
+    color: white;
+    border: 1px solid #555555;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.folder-action-btn:hover {
+    background: #444444;
+}
+
+.folder-action-btn.hide-all-btn:hover {
+    background: #552222;
+    border-color: #663333;
+}
+
+.folder-action-btn.show-all-btn:hover {
+    background: #224422;
+    border-color: #335533;
 }
 
 .folder-content {
@@ -273,6 +340,44 @@ body {
 
 .popup-textarea::placeholder {
     color: #888888;
+}
+
+.bulk-import-folder-row {
+    margin-bottom: 1rem;
+}
+
+.bulk-import-folder-row .popup-label {
+    margin-bottom: 0.5rem;
+}
+
+.bulk-import-folder-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.bulk-import-folder-controls .folder-select {
+    flex: 1;
+    min-width: 160px;
+    margin-bottom: 0;
+    padding: 0.5rem 0.75rem;
+    height: 2.25rem;
+    min-height: 2.25rem;
+    line-height: 1.25;
+    box-sizing: border-box;
+}
+
+.bulk-import-new-folder-inline {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.bulk-import-new-folder-inline .bulk-import-inline-input {
+    flex: 1;
+    margin-bottom: 0;
 }
 
 .bulk-import-hint {

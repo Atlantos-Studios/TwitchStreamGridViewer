@@ -52,12 +52,54 @@ class TwitchStreamViewer {
     
     setupEventListeners() {
         document.getElementById('addStream').addEventListener('click', () => {
-            this.addStream();
+            this.showAddStreamPopup();
         });
         
-        document.getElementById('streamNameInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.addStream();
+        document.getElementById('closeAddStreamPopup').addEventListener('click', () => {
+            this.closeAddStreamPopup();
+        });
+        
+        document.getElementById('confirmAddStream').addEventListener('click', () => {
+            this.confirmAddStream();
+        });
+        
+        document.getElementById('cancelAddStream').addEventListener('click', () => {
+            this.closeAddStreamPopup();
+        });
+        
+        document.getElementById('addStreamPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'addStreamPopup') {
+                this.closeAddStreamPopup();
+            }
+        });
+        
+        document.getElementById('addStreamNewFolderBtn').addEventListener('click', () => {
+            this.toggleAddStreamNewFolderInline();
+        });
+        
+        document.getElementById('addStreamCreateFolderBtn').addEventListener('click', () => {
+            this.createFolderFromAddStreamPopup();
+        });
+        
+        document.getElementById('addStreamNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.confirmAddStream();
+        });
+        
+        document.getElementById('addStreamNewFolderName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.createFolderFromAddStreamPopup();
+        });
+        
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            this.showSettingsPopup();
+        });
+        
+        document.getElementById('closeSettingsPopup').addEventListener('click', () => {
+            this.closeSettingsPopup();
+        });
+        
+        document.getElementById('settingsPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'settingsPopup') {
+                this.closeSettingsPopup();
             }
         });
         
@@ -101,6 +143,18 @@ class TwitchStreamViewer {
             if (e.target.id === 'bulkImportPopup') {
                 this.closeBulkImportPopup();
             }
+        });
+        
+        document.getElementById('bulkImportNewFolderBtn').addEventListener('click', () => {
+            this.toggleBulkImportNewFolderInline();
+        });
+        
+        document.getElementById('bulkImportCreateFolderBtn').addEventListener('click', () => {
+            this.createFolderFromBulkImport();
+        });
+        
+        document.getElementById('bulkImportNewFolderName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.createFolderFromBulkImport();
         });
         
         // Folder popup event listeners
@@ -313,9 +367,16 @@ class TwitchStreamViewer {
     showStream(streamId) {
         this.hiddenStreams.delete(streamId);
         this.saveHiddenStreamsToStorage();
-        const streamElement = document.getElementById(`stream-${streamId}`);
+        let streamElement = document.getElementById(`stream-${streamId}`);
         if (streamElement) {
             streamElement.classList.remove('hidden');
+        } else {
+            // Stream was hidden at load time – no DOM element exists; create and append it
+            const stream = this.streams.find(s => s.id === streamId);
+            if (stream) {
+                streamElement = this.createStreamElement(stream);
+                document.getElementById('streamsGrid').appendChild(streamElement);
+            }
         }
         this.updateHiddenStreamsList();
     }
@@ -329,16 +390,9 @@ class TwitchStreamViewer {
         const list = document.getElementById('hiddenStreamsList');
         const hiddenStreams = Array.from(this.hiddenStreams);
         
-        if (hiddenStreams.length === 0) {
-            list.innerHTML = '<p class="no-hidden">No hidden streams</p>';
-            return;
-        }
-        
-        list.innerHTML = '';
-        
         // Group hidden streams by folder
         const streamsByFolder = {};
-        const streamsWithoutFolder = [];
+        let streamsWithoutFolder = [];
         
         hiddenStreams.forEach(streamId => {
             const stream = this.streams.find(s => s.id === streamId);
@@ -355,17 +409,34 @@ class TwitchStreamViewer {
             }
         });
         
-        // Create folder sections
-        Object.keys(streamsByFolder).sort().forEach(folderName => {
-            const folderSection = this.createFolderSection(folderName, streamsByFolder[folderName]);
+        list.innerHTML = '';
+        
+        // Show all folders (even empty) so "Hide all" can be used
+        const folderNames = Object.keys(this.folders || {}).sort();
+        folderNames.forEach(folderName => {
+            const streams = streamsByFolder[folderName] || [];
+            const folderSection = this.createFolderSection(folderName, streams);
             list.appendChild(folderSection);
         });
         
-        // Add streams without folder
-        if (streamsWithoutFolder.length > 0) {
-            const noFolderSection = this.createFolderSection('No Folder', streamsWithoutFolder);
-            list.appendChild(noFolderSection);
+        // Always show "No Folder" section (streams without folder assignment)
+        const noFolderSection = this.createFolderSection('No Folder', streamsWithoutFolder);
+        list.appendChild(noFolderSection);
+    }
+    
+    getStreamIdsInFolder(folderName) {
+        if (folderName === 'No Folder') {
+            return this.streamers.filter(id => !this.streamFolders[id]);
         }
+        return this.streamers.filter(id => this.streamFolders[id] === folderName);
+    }
+    
+    hideAllInFolder(folderName) {
+        this.getStreamIdsInFolder(folderName).forEach(id => this.hideStream(id));
+    }
+    
+    showAllInFolder(streams) {
+        streams.forEach(({ id: streamId }) => this.showStream(streamId));
     }
     
     createFolderSection(folderName, streams) {
@@ -375,16 +446,47 @@ class TwitchStreamViewer {
         
         const folderHeader = document.createElement('div');
         folderHeader.className = 'folder-header';
-        folderHeader.addEventListener('click', () => this.toggleFolder(folderSection));
         
-        const folderToggle = document.createElement('span');
-        folderToggle.className = 'folder-toggle';
+        const titleRow = document.createElement('div');
+        titleRow.className = 'folder-title-row';
+        titleRow.addEventListener('click', () => this.toggleFolder(folderSection));
         
         const folderTitle = document.createElement('span');
-        folderTitle.textContent = `${folderName} (${streams.length})`;
+        folderTitle.className = 'folder-title';
+        folderTitle.textContent = folderName;
         
-        folderHeader.appendChild(folderToggle);
-        folderHeader.appendChild(folderTitle);
+        const count = this.getStreamIdsInFolder(folderName).length;
+        const badge = document.createElement('span');
+        badge.className = 'folder-count-badge';
+        badge.textContent = count;
+        
+        titleRow.appendChild(folderTitle);
+        titleRow.appendChild(badge);
+        
+        const headerActions = document.createElement('div');
+        headerActions.className = 'folder-header-actions';
+        
+        const hideAllBtn = document.createElement('button');
+        hideAllBtn.className = 'folder-action-btn hide-all-btn';
+        hideAllBtn.textContent = 'Hide all';
+        hideAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.hideAllInFolder(folderName);
+        });
+        
+        const showAllBtn = document.createElement('button');
+        showAllBtn.className = 'folder-action-btn show-all-btn';
+        showAllBtn.textContent = 'Show all';
+        showAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showAllInFolder(streams);
+        });
+        
+        headerActions.appendChild(hideAllBtn);
+        headerActions.appendChild(showAllBtn);
+        
+        folderHeader.appendChild(titleRow);
+        folderHeader.appendChild(headerActions);
         
         const folderContent = document.createElement('div');
         folderContent.className = 'folder-content';
@@ -393,9 +495,6 @@ class TwitchStreamViewer {
         const isExpanded = this.folderStates[folderName] === true;
         if (isExpanded) {
             folderContent.classList.add('expanded');
-            folderToggle.textContent = '▼';
-        } else {
-            folderToggle.textContent = '▶';
         }
         
         streams.forEach(({ id: streamId, stream }) => {
@@ -424,16 +523,13 @@ class TwitchStreamViewer {
     
     toggleFolder(folderSection) {
         const content = folderSection.querySelector('.folder-content');
-        const toggle = folderSection.querySelector('.folder-toggle');
         const folderName = folderSection.dataset.folderName;
         
         if (content.classList.contains('expanded')) {
             content.classList.remove('expanded');
-            toggle.textContent = '▶';
             this.folderStates[folderName] = false;
         } else {
             content.classList.add('expanded');
-            toggle.textContent = '▼';
             this.folderStates[folderName] = true;
         }
         
@@ -444,41 +540,117 @@ class TwitchStreamViewer {
     
     
     // Stream Management Functions
-    addStream() {
-        const input = document.getElementById('streamNameInput');
+    showAddStreamPopup() {
+        const popup = document.getElementById('addStreamPopup');
+        document.getElementById('addStreamNameInput').value = '';
+        this.populateAddStreamFolderDropdown();
+        document.getElementById('addStreamFolderSelect').value = '';
+        this.hideAddStreamNewFolderInline();
+        popup.style.display = 'flex';
+        document.getElementById('addStreamNameInput').focus();
+    }
+    
+    closeAddStreamPopup() {
+        document.getElementById('addStreamPopup').style.display = 'none';
+        document.getElementById('addStreamNameInput').value = '';
+        this.hideAddStreamNewFolderInline();
+    }
+    
+    populateAddStreamFolderDropdown() {
+        const select = document.getElementById('addStreamFolderSelect');
+        const currentOptions = select.querySelectorAll('option');
+        currentOptions.forEach((opt, i) => { if (i > 0) opt.remove(); });
+        
+        Object.keys(this.folders || {}).sort().forEach(folderName => {
+            const option = document.createElement('option');
+            option.value = folderName;
+            option.textContent = folderName;
+            select.appendChild(option);
+        });
+    }
+    
+    toggleAddStreamNewFolderInline() {
+        const inline = document.getElementById('addStreamNewFolderInline');
+        if (inline.style.display === 'none') {
+            inline.style.display = 'flex';
+            document.getElementById('addStreamNewFolderName').value = '';
+            document.getElementById('addStreamNewFolderName').focus();
+        } else {
+            this.hideAddStreamNewFolderInline();
+        }
+    }
+    
+    hideAddStreamNewFolderInline() {
+        const inline = document.getElementById('addStreamNewFolderInline');
+        inline.style.display = 'none';
+        document.getElementById('addStreamNewFolderName').value = '';
+    }
+    
+    createFolderFromAddStreamPopup() {
+        const input = document.getElementById('addStreamNewFolderName');
+        const folderName = input.value.trim();
+        
+        if (!folderName) {
+            this.showNotification('Please enter a folder name.', 'error');
+            return;
+        }
+        
+        if (this.folders[folderName]) {
+            this.showNotification('Folder already exists.', 'error');
+            return;
+        }
+        
+        this.folders[folderName] = {
+            name: folderName,
+            created: new Date().toISOString()
+        };
+        this.saveFoldersToStorage();
+        
+        this.populateAddStreamFolderDropdown();
+        document.getElementById('addStreamFolderSelect').value = folderName;
+        this.hideAddStreamNewFolderInline();
+        this.showNotification(`Created folder: ${folderName}`, 'success');
+    }
+    
+    confirmAddStream() {
+        const input = document.getElementById('addStreamNameInput');
         const streamName = input.value.trim().toLowerCase();
+        const selectedFolder = document.getElementById('addStreamFolderSelect').value.trim();
         
         if (!streamName) {
-            alert('Please enter a streamer name!');
+            this.showNotification('Please enter a streamer name.', 'error');
             return;
         }
         
         if (this.streamers.includes(streamName)) {
-            alert('This streamer is already in the list!');
+            this.showNotification('This streamer is already in the list!', 'error');
             return;
         }
         
-        // Validate streamer name (simple validation)
         if (!/^[a-zA-Z0-9_]+$/.test(streamName)) {
-            alert('Streamer name can only contain letters, numbers and underscores!');
+            this.showNotification('Streamer name can only contain letters, numbers and underscores!', 'error');
             return;
         }
         
         this.streamers.push(streamName);
         this.saveStreamersToStorage();
-        input.value = '';
-        
-        // Add only the new stream without reloading all streams
         this.addSingleStream(streamName);
+        if (selectedFolder) {
+            this.assignStreamToFolder(streamName, selectedFolder);
+        }
         
-        // Show success message
-        this.showNotification(`Streamer "${streamName}" has been added!`, 'success');
+        this.closeAddStreamPopup();
+        const folderMsg = selectedFolder ? ` (assigned to "${selectedFolder}")` : '';
+        this.showNotification(`Streamer "${streamName}" has been added!${folderMsg}`, 'success');
     }
     
     showBulkImportPopup() {
         const popup = document.getElementById('bulkImportPopup');
         const textarea = document.getElementById('bulkImportInput');
         textarea.value = '';
+        this.populateBulkImportFolderDropdown();
+        document.getElementById('bulkImportFolderSelect').value = '';
+        this.hideBulkImportNewFolderInline();
         popup.style.display = 'flex';
         textarea.focus();
     }
@@ -486,11 +658,70 @@ class TwitchStreamViewer {
     closeBulkImportPopup() {
         document.getElementById('bulkImportPopup').style.display = 'none';
         document.getElementById('bulkImportInput').value = '';
+        this.hideBulkImportNewFolderInline();
+    }
+    
+    populateBulkImportFolderDropdown() {
+        const select = document.getElementById('bulkImportFolderSelect');
+        const currentOptions = select.querySelectorAll('option');
+        currentOptions.forEach((opt, i) => { if (i > 0) opt.remove(); });
+        
+        Object.keys(this.folders || {}).sort().forEach(folderName => {
+            const option = document.createElement('option');
+            option.value = folderName;
+            option.textContent = folderName;
+            select.appendChild(option);
+        });
+    }
+    
+    toggleBulkImportNewFolderInline() {
+        const inline = document.getElementById('bulkImportNewFolderInline');
+        if (inline.style.display === 'none') {
+            inline.style.display = 'flex';
+            document.getElementById('bulkImportNewFolderName').value = '';
+            document.getElementById('bulkImportNewFolderName').focus();
+        } else {
+            this.hideBulkImportNewFolderInline();
+        }
+    }
+    
+    hideBulkImportNewFolderInline() {
+        const inline = document.getElementById('bulkImportNewFolderInline');
+        inline.style.display = 'none';
+        document.getElementById('bulkImportNewFolderName').value = '';
+    }
+    
+    createFolderFromBulkImport() {
+        const input = document.getElementById('bulkImportNewFolderName');
+        const folderName = input.value.trim();
+        
+        if (!folderName) {
+            this.showNotification('Please enter a folder name.', 'error');
+            return;
+        }
+        
+        if (this.folders[folderName]) {
+            this.showNotification('Folder already exists.', 'error');
+            return;
+        }
+        
+        this.folders[folderName] = {
+            name: folderName,
+            created: new Date().toISOString()
+        };
+        this.saveFoldersToStorage();
+        
+        this.populateBulkImportFolderDropdown();
+        document.getElementById('bulkImportFolderSelect').value = folderName;
+        this.hideBulkImportNewFolderInline();
+        this.showNotification(`Created folder: ${folderName}`, 'success');
     }
     
     confirmBulkImport() {
         const textarea = document.getElementById('bulkImportInput');
         const raw = textarea.value.trim();
+        const folderSelect = document.getElementById('bulkImportFolderSelect');
+        const selectedFolder = folderSelect.value.trim();
         
         if (!raw) {
             this.showNotification('Please enter at least one streamer name.', 'error');
@@ -519,12 +750,16 @@ class TwitchStreamViewer {
             this.saveStreamersToStorage();
             this.addSingleStream(name);
             added.push(name);
+            if (selectedFolder) {
+                this.assignStreamToFolder(name, selectedFolder);
+            }
         }
         
         this.closeBulkImportPopup();
         
         if (added.length > 0) {
-            this.showNotification(`${added.length} streamer(s) added. ${skipped.length} skipped (duplicates or invalid).`, 'success');
+            const folderMsg = selectedFolder ? ` (assigned to "${selectedFolder}")` : '';
+            this.showNotification(`${added.length} streamer(s) added${folderMsg}. ${skipped.length} skipped (duplicates or invalid).`, 'success');
         } else {
             this.showNotification('No new streamers added. Check for duplicates or invalid names (letters, numbers, underscores only).', 'warning');
         }
@@ -648,16 +883,10 @@ class TwitchStreamViewer {
                         }));
                     }
                     
-                    // Load folder data if available
-                    if (data.folders) {
-                        this.folders = data.folders;
-                    }
-                    if (data.streamFolders) {
-                        this.streamFolders = data.streamFolders;
-                    }
-                    if (data.folderStates) {
-                        this.folderStates = data.folderStates;
-                    }
+                    // Load folder data (use empty objects if missing, e.g. older save files)
+                    this.folders = data.folders && typeof data.folders === 'object' ? data.folders : {};
+                    this.streamFolders = data.streamFolders && typeof data.streamFolders === 'object' ? data.streamFolders : {};
+                    this.folderStates = data.folderStates && typeof data.folderStates === 'object' ? data.folderStates : {};
                     
                     // Save all data to localStorage
                     this.saveStreamersToStorage();
@@ -671,6 +900,7 @@ class TwitchStreamViewer {
                     
                     const folderCount = Object.keys(this.folders).length;
                     this.showNotification(`Loaded ${data.streamers.length} streams and ${folderCount} folders from file!`, 'success');
+                    this.closeSettingsPopup();
                 } else {
                     throw new Error('Invalid file format');
                 }
@@ -691,6 +921,7 @@ class TwitchStreamViewer {
     }
     
     showClearPopup() {
+        this.closeSettingsPopup();
         const popup = document.getElementById('clearPopup');
         popup.style.display = 'flex';
     }
@@ -700,21 +931,35 @@ class TwitchStreamViewer {
         popup.style.display = 'none';
     }
     
+    showSettingsPopup() {
+        document.getElementById('settingsPopup').style.display = 'flex';
+    }
+    
+    closeSettingsPopup() {
+        document.getElementById('settingsPopup').style.display = 'none';
+    }
+    
     confirmClearStreams() {
-        // Clear all data
+        // Clear all data (streams and folder-related state)
         this.streamers = [];
         this.streams = [];
         this.hiddenStreams.clear();
+        this.folders = {};
+        this.streamFolders = {};
+        this.folderStates = {};
         
-        // Clear storage
+        // Clear all storage
         this.saveStreamersToStorage();
         this.saveHiddenStreamsToStorage();
+        this.saveFoldersToStorage();
+        this.saveStreamFoldersToStorage();
+        this.saveFolderStatesToStorage();
         
         // Clear the grid
         const grid = document.getElementById('streamsGrid');
         grid.innerHTML = '<div class="no-streams">No streams added yet. Add some streams to get started!</div>';
         
-        // Update hidden streams list
+        // Update hidden streams list (will show no folders now)
         this.updateHiddenStreamsList();
         
         this.showNotification('All streams cleared!', 'success');

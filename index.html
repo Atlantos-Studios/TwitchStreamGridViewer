@@ -12,17 +12,11 @@
             <h1>Twitch Stream Grid Viewer</h1>
             <div class="controls">
                 <div class="add-stream-controls">
-                    <input type="text" id="streamNameInput" placeholder="Enter streamer name..." class="stream-input">
                     <button id="addStream" class="btn btn-add">Add Stream</button>
                     <button id="bulkImport" class="btn btn-bulk">Bulk Import</button>
                     <button id="addFolder" class="btn btn-folder">Add Folder</button>
                 </div>
-                <div class="file-controls">
-                    <button id="saveStreams" class="btn btn-save">Save</button>
-                    <button id="loadStreams" class="btn btn-load">Load</button>
-                    <button id="clearStreams" class="btn btn-clear">Clear</button>
-                    <input type="file" id="fileInput" accept=".json" style="display: none;">
-                </div>
+                <button id="settingsBtn" class="btn btn-settings">Settings</button>
             </div>
         </header>
         
@@ -97,6 +91,37 @@
         </div>
     </div>
     
+    <!-- Add Stream Popup -->
+    <div id="addStreamPopup" class="popup-overlay" style="display: none;">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h3>Add Streamer</h3>
+                <button id="closeAddStreamPopup" class="popup-close">&times;</button>
+            </div>
+            <div class="popup-body">
+                <label for="addStreamNameInput" class="popup-label">Streamer name:</label>
+                <input type="text" id="addStreamNameInput" class="popup-input" placeholder="Enter streamer name...">
+                <div class="bulk-import-folder-row">
+                    <label for="addStreamFolderSelect" class="popup-label">Assign to folder (optional):</label>
+                    <div class="bulk-import-folder-controls">
+                        <select id="addStreamFolderSelect" class="folder-select bulk-import-select">
+                            <option value="">— No folder —</option>
+                        </select>
+                        <button type="button" id="addStreamNewFolderBtn" class="btn btn-small btn-secondary">Create new folder</button>
+                    </div>
+                    <div id="addStreamNewFolderInline" class="bulk-import-new-folder-inline" style="display: none;">
+                        <input type="text" id="addStreamNewFolderName" class="popup-input bulk-import-inline-input" placeholder="Folder name...">
+                        <button type="button" id="addStreamCreateFolderBtn" class="btn btn-small btn-primary">Create</button>
+                    </div>
+                </div>
+                <div class="popup-buttons">
+                    <button id="confirmAddStream" class="btn btn-primary">Add Streamer</button>
+                    <button id="cancelAddStream" class="btn btn-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Bulk Import Popup -->
     <div id="bulkImportPopup" class="popup-overlay" style="display: none;">
         <div class="popup-content popup-content-wide">
@@ -107,11 +132,43 @@
             <div class="popup-body">
                 <label for="bulkImportInput" class="popup-label">Enter streamer names (one per line or comma-separated):</label>
                 <textarea id="bulkImportInput" class="popup-textarea" placeholder="streamer1&#10;streamer2&#10;streamer3"></textarea>
+                <div class="bulk-import-folder-row">
+                    <label for="bulkImportFolderSelect" class="popup-label">Assign to folder (optional):</label>
+                    <div class="bulk-import-folder-controls">
+                        <select id="bulkImportFolderSelect" class="folder-select bulk-import-select">
+                            <option value="">— No folder —</option>
+                        </select>
+                        <button type="button" id="bulkImportNewFolderBtn" class="btn btn-small btn-secondary">Create new folder</button>
+                    </div>
+                    <div id="bulkImportNewFolderInline" class="bulk-import-new-folder-inline" style="display: none;">
+                        <input type="text" id="bulkImportNewFolderName" class="popup-input bulk-import-inline-input" placeholder="Folder name...">
+                        <button type="button" id="bulkImportCreateFolderBtn" class="btn btn-small btn-primary">Create</button>
+                    </div>
+                </div>
                 <p class="bulk-import-hint">Invalid names and duplicates will be skipped.</p>
                 <div class="popup-buttons">
                     <button id="confirmBulkImport" class="btn btn-primary">Add Streamers</button>
                     <button id="cancelBulkImport" class="btn btn-cancel">Cancel</button>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Popup -->
+    <div id="settingsPopup" class="popup-overlay" style="display: none;">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h3>Settings</h3>
+                <button id="closeSettingsPopup" class="popup-close">&times;</button>
+            </div>
+            <div class="popup-body">
+                <p class="popup-section-label">Data</p>
+                <div class="settings-buttons">
+                    <button id="saveStreams" class="btn btn-save">Save</button>
+                    <button id="loadStreams" class="btn btn-load">Load</button>
+                    <button id="clearStreams" class="btn btn-clear">Clear</button>
+                </div>
+                <input type="file" id="fileInput" accept=".json" style="display: none;">
             </div>
         </div>
     </div>
