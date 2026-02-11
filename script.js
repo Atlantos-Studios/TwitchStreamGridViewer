@@ -609,6 +609,7 @@ class TwitchStreamViewer {
         this.populateAddStreamFolderDropdown();
         document.getElementById('addStreamFolderSelect').value = folderName;
         this.hideAddStreamNewFolderInline();
+        this.updateHiddenStreamsList();
         this.showNotification(`Created folder: ${folderName}`, 'success');
     }
     
@@ -714,6 +715,7 @@ class TwitchStreamViewer {
         this.populateBulkImportFolderDropdown();
         document.getElementById('bulkImportFolderSelect').value = folderName;
         this.hideBulkImportNewFolderInline();
+        this.updateHiddenStreamsList();
         this.showNotification(`Created folder: ${folderName}`, 'success');
     }
     
@@ -758,6 +760,7 @@ class TwitchStreamViewer {
         this.closeBulkImportPopup();
         
         if (added.length > 0) {
+            this.updateHiddenStreamsList();
             const folderMsg = selectedFolder ? ` (assigned to "${selectedFolder}")` : '';
             this.showNotification(`${added.length} streamer(s) added${folderMsg}. ${skipped.length} skipped (duplicates or invalid).`, 'success');
         } else {
@@ -1092,6 +1095,7 @@ class TwitchStreamViewer {
         };
         this.saveFoldersToStorage();
         
+        this.updateHiddenStreamsList();
         this.showNotification(`Created folder: ${folderName}`, 'success');
         this.closeAddFolderPopup();
     }
