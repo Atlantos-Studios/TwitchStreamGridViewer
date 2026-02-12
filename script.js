@@ -1,14 +1,20 @@
 class TwitchStreamViewer {
     constructor() {
         this.streams = [];
-        this.hiddenStreams = this.loadHiddenStreamsFromStorage();
+        this.hiddenStreamsByWorkspace = this.loadHiddenStreamsByWorkspaceFromStorage();
         this.manageMode = false;
         this.folders = this.loadFoldersFromStorage() || {};
         this.streamFolders = this.loadStreamFoldersFromStorage() || {};
+        this.folderStreamers = this.loadFolderStreamersFromStorage() || {};
         this.folderStates = this.loadFolderStatesFromStorage() || {};
+        this.workspaces = this.loadWorkspacesFromStorage() || {};
+        this.folderWorkspace = this.loadFolderWorkspaceFromStorage() || {};
+        this.currentWorkspaceId = this.loadCurrentWorkspaceIdFromStorage();
         this.currentStreamForFolder = null;
         this.currentStreamForRemoval = null;
         this.currentFolderForDeletion = null;
+        this.viewMode = this.loadViewModeFromStorage() || 'gallery';
+        this.searchFilter = '';
         
         // Twitch API Configuration
         this.clientId = 'YOUR_TWITCH_CLIENT_ID'; // Enter your Twitch Client ID here
@@ -47,8 +53,34 @@ class TwitchStreamViewer {
     }
     
     init() {
+        this.ensureWorkspaceStructure();
+        this.ensureFolderStreamersFromStreamFolders();
         this.setupEventListeners();
+        this.populateWorkspaceSelect();
+        this.updateHeaderWorkspaceTitle();
+        document.getElementById('viewGallery').classList.toggle('btn-view-active', this.viewMode === 'gallery');
+        document.getElementById('viewList').classList.toggle('btn-view-active', this.viewMode === 'list');
+        document.getElementById('streamsGrid').style.display = this.viewMode === 'gallery' ? '' : 'none';
+        document.getElementById('streamsList').style.display = this.viewMode === 'list' ? '' : 'none';
         this.loadStreams();
+    }
+    
+    ensureWorkspaceStructure() {
+        const workspaceIds = Object.keys(this.workspaces);
+        if (workspaceIds.length === 0) {
+            const defaultId = 'ws-' + Date.now();
+            this.workspaces[defaultId] = { name: 'Default' };
+            Object.keys(this.folders || {}).forEach(folderName => {
+                this.folderWorkspace[folderName] = defaultId;
+            });
+            this.currentWorkspaceId = defaultId;
+            this.saveWorkspacesToStorage();
+            this.saveFolderWorkspaceToStorage();
+            this.saveCurrentWorkspaceIdToStorage();
+        } else if (!this.currentWorkspaceId || !this.workspaces[this.currentWorkspaceId]) {
+            this.currentWorkspaceId = workspaceIds[0];
+            this.saveCurrentWorkspaceIdToStorage();
+        }
     }
     
     setupEventListeners() {
@@ -92,6 +124,18 @@ class TwitchStreamViewer {
         
         document.getElementById('settingsBtn').addEventListener('click', () => {
             this.showSettingsPopup();
+        });
+        
+        document.getElementById('viewGallery').addEventListener('click', () => {
+            this.switchView('gallery');
+        });
+        document.getElementById('viewList').addEventListener('click', () => {
+            this.switchView('list');
+        });
+        
+        document.getElementById('streamSearch').addEventListener('input', (e) => {
+            this.searchFilter = (e.target.value || '').trim().toLowerCase();
+            this.renderStreams();
         });
         
         document.getElementById('closeSettingsPopup').addEventListener('click', () => {
@@ -248,6 +292,23 @@ class TwitchStreamViewer {
             }
         });
         
+        // Rename folder popup
+        document.getElementById('closeRenameFolderPopup').addEventListener('click', () => {
+            this.closeRenameFolderPopup();
+        });
+        document.getElementById('confirmRenameFolder').addEventListener('click', () => {
+            this.confirmRenameFolder();
+        });
+        document.getElementById('cancelRenameFolder').addEventListener('click', () => {
+            this.closeRenameFolderPopup();
+        });
+        document.getElementById('renameFolderPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'renameFolderPopup') this.closeRenameFolderPopup();
+        });
+        document.getElementById('renameFolderNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.confirmRenameFolder();
+        });
+        
         // Clear popup event listeners
         document.getElementById('closeClearPopup').addEventListener('click', () => {
             this.closeClearPopup();
@@ -266,6 +327,67 @@ class TwitchStreamViewer {
             if (e.target.id === 'clearPopup') {
                 this.closeClearPopup();
             }
+        });
+        
+        // Workspace event listeners
+        document.getElementById('workspaceSelect').addEventListener('change', (e) => {
+            const id = e.target.value;
+            if (id) {
+                this.currentWorkspaceId = id;
+                this.saveCurrentWorkspaceIdToStorage();
+                this.updateHeaderWorkspaceTitle();
+                this.updateHiddenStreamsList();
+                this.renderStreams();
+            }
+        });
+        document.getElementById('addWorkspace').addEventListener('click', () => {
+            this.showWorkspaceManagementPopup();
+        });
+        document.getElementById('closeWorkspaceNamePopup').addEventListener('click', () => {
+            this.closeWorkspaceNamePopup();
+        });
+        document.getElementById('confirmWorkspaceName').addEventListener('click', () => {
+            this.confirmWorkspaceNamePopup();
+        });
+        document.getElementById('cancelWorkspaceName').addEventListener('click', () => {
+            this.closeWorkspaceNamePopup();
+        });
+        document.getElementById('workspaceNamePopup').addEventListener('click', (e) => {
+            if (e.target.id === 'workspaceNamePopup') this.closeWorkspaceNamePopup();
+        });
+        document.getElementById('workspaceNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.confirmWorkspaceNamePopup();
+        });
+        
+        // Workspace management popup (opened via sidebar + button)
+        document.getElementById('closeWorkspaceManagementPopup').addEventListener('click', () => {
+            this.closeWorkspaceManagementPopup();
+        });
+        document.getElementById('closeWorkspaceManagementBtn').addEventListener('click', () => {
+            this.closeWorkspaceManagementPopup();
+        });
+        document.getElementById('workspaceManagementPopup').addEventListener('click', (e) => {
+            if (e.target.id === 'workspaceManagementPopup') this.closeWorkspaceManagementPopup();
+        });
+        document.getElementById('workspaceManagementCreate').addEventListener('click', () => {
+            this.createWorkspaceFromManagement();
+        });
+        document.getElementById('workspaceManagementNewName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.createWorkspaceFromManagement();
+        });
+        
+        // Delete workspace popup
+        document.getElementById('closeDeleteWorkspacePopup').addEventListener('click', () => {
+            this.closeDeleteWorkspacePopup();
+        });
+        document.getElementById('confirmDeleteWorkspace').addEventListener('click', () => {
+            this.confirmDeleteWorkspace();
+        });
+        document.getElementById('cancelDeleteWorkspace').addEventListener('click', () => {
+            this.closeDeleteWorkspacePopup();
+        });
+        document.getElementById('deleteWorkspacePopup').addEventListener('click', (e) => {
+            if (e.target.id === 'deleteWorkspacePopup') this.closeDeleteWorkspacePopup();
         });
     }
     
@@ -294,20 +416,107 @@ class TwitchStreamViewer {
     }
     
     
+    switchView(mode) {
+        this.viewMode = mode;
+        this.saveViewModeToStorage();
+        document.getElementById('viewGallery').classList.toggle('btn-view-active', mode === 'gallery');
+        document.getElementById('viewList').classList.toggle('btn-view-active', mode === 'list');
+        document.getElementById('streamsGrid').style.display = mode === 'gallery' ? '' : 'none';
+        document.getElementById('streamsList').style.display = mode === 'list' ? '' : 'none';
+        this.renderStreams();
+    }
+    
     renderStreams() {
         const grid = document.getElementById('streamsGrid');
+        const listContainer = document.getElementById('streamsList');
         grid.innerHTML = '';
+        listContainer.innerHTML = '';
         
-        this.streams.forEach(stream => {
-            if (this.hiddenStreams.has(stream.id)) {
-                return; // Überspringe ausgeblendete Streams
+        let visibleStreams = this.streams.filter(stream => {
+            if (this.getHiddenStreams().has(stream.id)) return false;
+            if (!this.streamBelongsToCurrentWorkspace(stream.id)) return false;
+            if (this.searchFilter) {
+                const name = (stream.displayName || stream.id || '').toLowerCase();
+                if (!name.includes(this.searchFilter)) return false;
             }
-            
-            const streamElement = this.createStreamElement(stream);
-            grid.appendChild(streamElement);
+            return true;
+        });
+        visibleStreams = visibleStreams.slice().sort((a, b) => {
+            const na = (a.displayName || a.id || '').toLowerCase();
+            const nb = (b.displayName || b.id || '').toLowerCase();
+            return na.localeCompare(nb);
         });
         
+        if (this.viewMode === 'gallery') {
+            visibleStreams.forEach(stream => {
+                const streamElement = this.createStreamElement(stream);
+                grid.appendChild(streamElement);
+            });
+        } else {
+            visibleStreams.forEach(stream => {
+                const listItem = this.createStreamListItem(stream);
+                listContainer.appendChild(listItem);
+            });
+        }
+        
         this.updateHiddenStreamsList();
+    }
+    
+    createStreamListItem(stream) {
+        const row = document.createElement('div');
+        row.className = 'stream-list-item';
+        row.id = `stream-list-${stream.id}`;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'stream-list-name';
+        nameSpan.textContent = stream.displayName;
+        
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'stream-list-actions';
+        
+        const hideBtn = document.createElement('button');
+        hideBtn.className = 'btn btn-small';
+        hideBtn.textContent = 'Hide';
+        hideBtn.addEventListener('click', () => this.hideStream(stream.id));
+        
+        const infoBtn = document.createElement('button');
+        infoBtn.className = 'btn btn-small';
+        infoBtn.textContent = 'Info';
+        infoBtn.addEventListener('click', () => this.openOnTwitchAbout(stream.id));
+        
+        const twitchBtn = document.createElement('button');
+        twitchBtn.className = 'btn btn-small';
+        twitchBtn.textContent = 'Twitch';
+        twitchBtn.addEventListener('click', () => this.openOnTwitch(stream.id));
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-small remove-stream-btn';
+        removeBtn.textContent = 'X';
+        removeBtn.addEventListener('click', () => this.removeStream(stream.id));
+        
+        buttonContainer.appendChild(hideBtn);
+        buttonContainer.appendChild(infoBtn);
+        buttonContainer.appendChild(twitchBtn);
+        
+        const folderLabel = this.getStreamDisplayFolder(stream.id);
+        if (folderLabel) {
+            const folderSpan = document.createElement('span');
+            folderSpan.className = 'stream-list-folder';
+            folderSpan.textContent = folderLabel;
+            folderSpan.addEventListener('click', () => this.showFolderSelection(stream.id));
+            buttonContainer.appendChild(folderSpan);
+        } else {
+            const folderBtn = document.createElement('button');
+            folderBtn.className = 'btn btn-small';
+            folderBtn.textContent = 'Add to Folder';
+            folderBtn.addEventListener('click', () => this.showFolderSelection(stream.id));
+            buttonContainer.appendChild(folderBtn);
+        }
+        
+        buttonContainer.appendChild(removeBtn);
+        row.appendChild(nameSpan);
+        row.appendChild(buttonContainer);
+        return row;
     }
     
     createStreamElement(stream) {
@@ -380,31 +589,28 @@ class TwitchStreamViewer {
         return streamDiv;
     }
     
+    getHiddenStreams() {
+        const ws = this.currentWorkspaceId;
+        if (!ws) return new Set();
+        if (!this.hiddenStreamsByWorkspace[ws]) this.hiddenStreamsByWorkspace[ws] = new Set();
+        return this.hiddenStreamsByWorkspace[ws];
+    }
+    
     hideStream(streamId) {
-        this.hiddenStreams.add(streamId);
-        this.saveHiddenStreamsToStorage();
+        this.getHiddenStreams().add(streamId);
+        this.saveHiddenStreamsByWorkspaceToStorage();
         const streamElement = document.getElementById(`stream-${streamId}`);
-        if (streamElement) {
-            streamElement.classList.add('hidden');
-        }
+        if (streamElement) streamElement.classList.add('hidden');
+        const listItem = document.getElementById(`stream-list-${streamId}`);
+        if (listItem) listItem.remove();
         this.updateHiddenStreamsList();
     }
     
     showStream(streamId) {
-        this.hiddenStreams.delete(streamId);
-        this.saveHiddenStreamsToStorage();
-        let streamElement = document.getElementById(`stream-${streamId}`);
-        if (streamElement) {
-            streamElement.classList.remove('hidden');
-        } else {
-            // Stream was hidden at load time – no DOM element exists; create and append it
-            const stream = this.streams.find(s => s.id === streamId);
-            if (stream) {
-                streamElement = this.createStreamElement(stream);
-                document.getElementById('streamsGrid').appendChild(streamElement);
-            }
-        }
+        this.getHiddenStreams().delete(streamId);
+        this.saveHiddenStreamsByWorkspaceToStorage();
         this.updateHiddenStreamsList();
+        this.renderStreams();
     }
     
     // Method to refresh only hidden streams list without affecting running streams
@@ -414,36 +620,42 @@ class TwitchStreamViewer {
     
     updateHiddenStreamsList() {
         const list = document.getElementById('hiddenStreamsList');
-        const hiddenStreams = Array.from(this.hiddenStreams);
+        const hiddenStreams = Array.from(this.getHiddenStreams());
         
         // Group hidden streams by folder
         const streamsByFolder = {};
         let streamsWithoutFolder = [];
         
+        const inAnyFolder = new Set(Object.values(this.folderStreamers).flat());
         hiddenStreams.forEach(streamId => {
             const stream = this.streams.find(s => s.id === streamId);
             if (stream) {
-                const folderName = this.streamFolders[streamId];
-                if (folderName) {
-                    if (!streamsByFolder[folderName]) {
-                        streamsByFolder[folderName] = [];
+                let inFolder = false;
+                Object.keys(this.folderStreamers || {}).forEach(folderName => {
+                    if ((this.folderStreamers[folderName] || []).includes(streamId)) {
+                        if (!streamsByFolder[folderName]) streamsByFolder[folderName] = [];
+                        streamsByFolder[folderName].push({ id: streamId, stream });
+                        inFolder = true;
                     }
-                    streamsByFolder[folderName].push({ id: streamId, stream });
-                } else {
-                    streamsWithoutFolder.push({ id: streamId, stream });
-                }
+                });
+                if (!inFolder) streamsWithoutFolder.push({ id: streamId, stream });
             }
         });
         
         list.innerHTML = '';
         
-        // Show all folders (even empty) so "Hide all" can be used
-        const folderNames = Object.keys(this.folders || {}).sort();
-        folderNames.forEach(folderName => {
-            const streams = streamsByFolder[folderName] || [];
-            const folderSection = this.createFolderSection(folderName, streams);
-            list.appendChild(folderSection);
-        });
+        // Only show the currently selected workspace (others are hidden)
+        if (this.currentWorkspaceId && this.workspaces[this.currentWorkspaceId]) {
+            const folderNamesInWs = this.getFolderNamesInWorkspace(this.currentWorkspaceId).sort();
+            const workspaceContent = document.createElement('div');
+            workspaceContent.className = 'workspace-block-content';
+            folderNamesInWs.forEach(folderName => {
+                const streams = streamsByFolder[folderName] || [];
+                const folderSection = this.createFolderSection(folderName, streams);
+                workspaceContent.appendChild(folderSection);
+            });
+            list.appendChild(workspaceContent);
+        }
         
         // Always show "No Folder" section (streams without folder assignment)
         const noFolderSection = this.createFolderSection('No Folder', streamsWithoutFolder);
@@ -452,9 +664,10 @@ class TwitchStreamViewer {
     
     getStreamIdsInFolder(folderName) {
         if (folderName === 'No Folder') {
-            return this.streamers.filter(id => !this.streamFolders[id]);
+            const inAnyFolder = new Set(Object.values(this.folderStreamers).flat());
+            return this.streamers.filter(id => !inAnyFolder.has(id));
         }
-        return this.streamers.filter(id => this.streamFolders[id] === folderName);
+        return this.folderStreamers[folderName] || [];
     }
     
     hideAllInFolder(folderName) {
@@ -491,21 +704,19 @@ class TwitchStreamViewer {
         if (!this.folders[folderName]) return;
         
         const streamIdsInFolder = this.getStreamIdsInFolder(folderName);
-        streamIdsInFolder.forEach(streamId => {
-            delete this.streamFolders[streamId];
-        });
+        delete this.folderStreamers[folderName];
         delete this.folders[folderName];
         delete this.folderStates[folderName];
+        delete this.folderWorkspace[folderName];
         
+        this.saveFolderStreamersToStorage();
         this.saveFoldersToStorage();
-        this.saveStreamFoldersToStorage();
         this.saveFolderStatesToStorage();
+        this.saveFolderWorkspaceToStorage();
         
         streamIdsInFolder.forEach(streamId => {
             const streamElement = document.getElementById(`stream-${streamId}`);
-            if (streamElement) {
-                this.updateStreamFolderButton(streamElement, streamId);
-            }
+            if (streamElement) this.updateStreamFolderButton(streamElement, streamId);
         });
         
         this.updateHiddenStreamsList();
@@ -559,6 +770,15 @@ class TwitchStreamViewer {
         headerActions.appendChild(showAllBtn);
         
         if (folderName !== 'No Folder') {
+            const renameFolderBtn = document.createElement('button');
+            renameFolderBtn.className = 'folder-action-btn rename-folder-btn';
+            renameFolderBtn.title = 'Rename folder';
+            renameFolderBtn.innerHTML = '<svg class="folder-icon-pencil" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            renameFolderBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showRenameFolderPopup(folderName);
+            });
+            headerActions.appendChild(renameFolderBtn);
             const deleteFolderBtn = document.createElement('button');
             deleteFolderBtn.className = 'folder-action-btn delete-folder-btn';
             deleteFolderBtn.textContent = 'X';
@@ -645,7 +865,7 @@ class TwitchStreamViewer {
         const currentOptions = select.querySelectorAll('option');
         currentOptions.forEach((opt, i) => { if (i > 0) opt.remove(); });
         
-        Object.keys(this.folders || {}).sort().forEach(folderName => {
+        this.getFolderNamesInWorkspace(this.currentWorkspaceId).sort().forEach(folderName => {
             const option = document.createElement('option');
             option.value = folderName;
             option.textContent = folderName;
@@ -688,7 +908,9 @@ class TwitchStreamViewer {
             name: folderName,
             created: new Date().toISOString()
         };
+        this.folderWorkspace[folderName] = this.currentWorkspaceId;
         this.saveFoldersToStorage();
+        this.saveFolderWorkspaceToStorage();
         
         this.populateAddStreamFolderDropdown();
         document.getElementById('addStreamFolderSelect').value = folderName;
@@ -707,22 +929,40 @@ class TwitchStreamViewer {
             return;
         }
         
-        if (this.streamers.includes(streamName)) {
-            this.showNotification('This streamer is already in the list!', 'error');
-            return;
-        }
-        
         if (!/^[a-zA-Z0-9_]+$/.test(streamName)) {
             this.showNotification('Streamer name can only contain letters, numbers and underscores!', 'error');
             return;
         }
         
-        this.streamers.push(streamName);
-        this.saveStreamersToStorage();
-        this.addSingleStream(streamName);
         if (selectedFolder) {
-            this.assignStreamToFolder(streamName, selectedFolder);
+            if (this.isStreamInFolder(streamName, selectedFolder)) {
+                this.showNotification('This streamer is already in this folder.', 'error');
+                return;
+            }
+        } else {
+            if (this.isStreamInNoFolder(streamName)) {
+                this.showNotification('This streamer is already in "No Folder".', 'error');
+                return;
+            }
         }
+        
+        const isNewStream = !this.streamers.includes(streamName);
+        if (isNewStream) {
+            this.streamers.push(streamName);
+            this.saveStreamersToStorage();
+            this.addSingleStream(streamName);
+        }
+        if (selectedFolder) {
+            if (!this.folderStreamers[selectedFolder]) this.folderStreamers[selectedFolder] = [];
+            this.folderStreamers[selectedFolder].push(streamName);
+            this.saveFolderStreamersToStorage();
+            if (isNewStream) {
+                const streamElement = document.getElementById(`stream-${streamName}`);
+                if (streamElement) this.updateStreamFolderButton(streamElement, streamName);
+            }
+        }
+        this.updateHiddenStreamsList();
+        this.renderStreams();
         
         this.closeAddStreamPopup();
         const folderMsg = selectedFolder ? ` (assigned to "${selectedFolder}")` : '';
@@ -751,7 +991,7 @@ class TwitchStreamViewer {
         const currentOptions = select.querySelectorAll('option');
         currentOptions.forEach((opt, i) => { if (i > 0) opt.remove(); });
         
-        Object.keys(this.folders || {}).sort().forEach(folderName => {
+        this.getFolderNamesInWorkspace(this.currentWorkspaceId).sort().forEach(folderName => {
             const option = document.createElement('option');
             option.value = folderName;
             option.textContent = folderName;
@@ -794,7 +1034,9 @@ class TwitchStreamViewer {
             name: folderName,
             created: new Date().toISOString()
         };
+        this.folderWorkspace[folderName] = this.currentWorkspaceId;
         this.saveFoldersToStorage();
+        this.saveFolderWorkspaceToStorage();
         
         this.populateBulkImportFolderDropdown();
         document.getElementById('bulkImportFolderSelect').value = folderName;
@@ -828,16 +1070,30 @@ class TwitchStreamViewer {
                 skipped.push(name);
                 continue;
             }
-            if (this.streamers.includes(name)) {
-                skipped.push(name);
-                continue;
+            if (selectedFolder) {
+                if (this.isStreamInFolder(name, selectedFolder)) {
+                    skipped.push(name);
+                    continue;
+                }
+            } else {
+                if (this.isStreamInNoFolder(name)) {
+                    skipped.push(name);
+                    continue;
+                }
             }
-            this.streamers.push(name);
-            this.saveStreamersToStorage();
-            this.addSingleStream(name);
+            const isNewStream = !this.streamers.includes(name);
+            if (isNewStream) {
+                this.streamers.push(name);
+                this.saveStreamersToStorage();
+                this.addSingleStream(name);
+            }
             added.push(name);
             if (selectedFolder) {
-                this.assignStreamToFolder(name, selectedFolder);
+                if (!this.folderStreamers[selectedFolder]) this.folderStreamers[selectedFolder] = [];
+                this.folderStreamers[selectedFolder].push(name);
+                this.saveFolderStreamersToStorage();
+                const streamElement = document.getElementById(`stream-${name}`);
+                if (streamElement) this.updateStreamFolderButton(streamElement, name);
             }
         }
         
@@ -845,10 +1101,11 @@ class TwitchStreamViewer {
         
         if (added.length > 0) {
             this.updateHiddenStreamsList();
+            this.renderStreams();
             const folderMsg = selectedFolder ? ` (assigned to "${selectedFolder}")` : '';
-            this.showNotification(`${added.length} streamer(s) added${folderMsg}. ${skipped.length} skipped (duplicates or invalid).`, 'success');
+            this.showNotification(`${added.length} streamer(s) added${folderMsg}. ${skipped.length} skipped (duplicates in this folder or invalid).`, 'success');
         } else {
-            this.showNotification('No new streamers added. Check for duplicates or invalid names (letters, numbers, underscores only).', 'warning');
+            this.showNotification('No new streamers added. Check for duplicates in this folder or invalid names (letters, numbers, underscores only).', 'warning');
         }
     }
     
@@ -893,18 +1150,22 @@ class TwitchStreamViewer {
         const streamName = this.currentStreamForRemoval;
         
         this.streamers = this.streamers.filter(s => s !== streamName);
-        this.hiddenStreams.delete(streamName);
+        Object.keys(this.hiddenStreamsByWorkspace).forEach(wsId => {
+            this.hiddenStreamsByWorkspace[wsId].delete(streamName);
+        });
+        Object.keys(this.folderStreamers).forEach(f => {
+            this.folderStreamers[f] = this.folderStreamers[f].filter(id => id !== streamName);
+            if (this.folderStreamers[f].length === 0) delete this.folderStreamers[f];
+        });
         this.saveStreamersToStorage();
-        this.saveHiddenStreamsToStorage();
+        this.saveHiddenStreamsByWorkspaceToStorage();
+        this.saveFolderStreamersToStorage();
         
-        // Remove from streams array
         this.streams = this.streams.filter(s => s.id !== streamName);
-        
-        // Remove stream element from grid
         const streamElement = document.getElementById(`stream-${streamName}`);
-        if (streamElement) {
-            streamElement.remove();
-        }
+        if (streamElement) streamElement.remove();
+        const listItem = document.getElementById(`stream-list-${streamName}`);
+        if (listItem) listItem.remove();
         
         this.updateHiddenStreamsList();
         this.showNotification(`Streamer "${streamName}" has been removed!`, 'info');
@@ -926,10 +1187,15 @@ class TwitchStreamViewer {
         const data = {
             streamers: this.streamers,
             streams: this.streams,
-            hiddenStreams: Array.from(this.hiddenStreams),
+            hiddenStreamsByWorkspace: this.serializeHiddenStreamsByWorkspace(),
             folders: this.folders,
             streamFolders: this.streamFolders,
+            folderStreamers: this.folderStreamers,
             folderStates: this.folderStates,
+            workspaces: this.workspaces,
+            folderWorkspace: this.folderWorkspace,
+            currentWorkspaceId: this.currentWorkspaceId,
+            viewMode: this.viewMode,
             timestamp: new Date().toISOString()
         };
         
@@ -960,7 +1226,7 @@ class TwitchStreamViewer {
                 if (data.streamers && Array.isArray(data.streamers)) {
                     // Load all data
                     this.streamers = data.streamers;
-                    this.hiddenStreams = new Set(data.hiddenStreams || []);
+                    this.hiddenStreamsByWorkspace = this.parseHiddenStreamsByWorkspace(data.hiddenStreamsByWorkspace || data.hiddenStreams, data.currentWorkspaceId);
                     
                     // Load streams data if available
                     if (data.streams) {
@@ -978,20 +1244,39 @@ class TwitchStreamViewer {
                     // Load folder data (use empty objects if missing, e.g. older save files)
                     this.folders = data.folders && typeof data.folders === 'object' ? data.folders : {};
                     this.streamFolders = data.streamFolders && typeof data.streamFolders === 'object' ? data.streamFolders : {};
+                    this.folderStreamers = data.folderStreamers && typeof data.folderStreamers === 'object' ? data.folderStreamers : {};
+                    this.ensureFolderStreamersFromStreamFolders();
                     this.folderStates = data.folderStates && typeof data.folderStates === 'object' ? data.folderStates : {};
+                    this.workspaces = data.workspaces && typeof data.workspaces === 'object' ? data.workspaces : {};
+                    this.folderWorkspace = data.folderWorkspace && typeof data.folderWorkspace === 'object' ? data.folderWorkspace : {};
+                    this.currentWorkspaceId = data.currentWorkspaceId && this.workspaces[data.currentWorkspaceId] ? data.currentWorkspaceId : null;
+                    this.ensureWorkspaceStructure();
+                    this.viewMode = (data.viewMode === 'list' || data.viewMode === 'gallery') ? data.viewMode : 'gallery';
+                    this.saveViewModeToStorage();
                     
                     // Save all data to localStorage
                     this.saveStreamersToStorage();
-                    this.saveHiddenStreamsToStorage();
+                    this.saveHiddenStreamsByWorkspaceToStorage();
                     this.saveFoldersToStorage();
                     this.saveStreamFoldersToStorage();
+                    this.saveFolderStreamersToStorage();
                     this.saveFolderStatesToStorage();
+                    this.saveWorkspacesToStorage();
+                    this.saveFolderWorkspaceToStorage();
+                    this.saveCurrentWorkspaceIdToStorage();
                     
-                    // Render streams directly instead of reloading
+                    document.getElementById('viewGallery').classList.toggle('btn-view-active', this.viewMode === 'gallery');
+                    document.getElementById('viewList').classList.toggle('btn-view-active', this.viewMode === 'list');
+                    document.getElementById('streamsGrid').style.display = this.viewMode === 'gallery' ? '' : 'none';
+                    document.getElementById('streamsList').style.display = this.viewMode === 'list' ? '' : 'none';
+                    
                     this.renderStreams();
                     
+                    this.populateWorkspaceSelect();
+                    this.updateHeaderWorkspaceTitle();
                     const folderCount = Object.keys(this.folders).length;
-                    this.showNotification(`Loaded ${data.streamers.length} streams and ${folderCount} folders from file!`, 'success');
+                    const workspaceCount = Object.keys(this.workspaces).length;
+                    this.showNotification(`Loaded ${data.streamers.length} streams, ${folderCount} folders, ${workspaceCount} workspace(s) from file!`, 'success');
                     this.closeSettingsPopup();
                 } else {
                     throw new Error('Invalid file format');
@@ -1032,26 +1317,38 @@ class TwitchStreamViewer {
     }
     
     confirmClearStreams() {
-        // Clear all data (streams and folder-related state)
+        // Clear all data (streams, folders, workspaces)
         this.streamers = [];
         this.streams = [];
-        this.hiddenStreams.clear();
+        this.hiddenStreamsByWorkspace = {};
         this.folders = {};
         this.streamFolders = {};
+        this.folderStreamers = {};
         this.folderStates = {};
+        this.workspaces = {};
+        this.folderWorkspace = {};
+        this.currentWorkspaceId = null;
         
         // Clear all storage
         this.saveStreamersToStorage();
-        this.saveHiddenStreamsToStorage();
+        this.saveHiddenStreamsByWorkspaceToStorage();
         this.saveFoldersToStorage();
         this.saveStreamFoldersToStorage();
+        this.saveFolderStreamersToStorage();
         this.saveFolderStatesToStorage();
+        this.saveWorkspacesToStorage();
+        this.saveFolderWorkspaceToStorage();
+        this.saveCurrentWorkspaceIdToStorage();
         
-        // Clear the grid
-        const grid = document.getElementById('streamsGrid');
-        grid.innerHTML = '<div class="no-streams">No streams added yet. Add some streams to get started!</div>';
+        // Re-create default workspace
+        this.ensureWorkspaceStructure();
+        this.populateWorkspaceSelect();
+        this.updateHeaderWorkspaceTitle();
         
-        // Update hidden streams list (will show no folders now)
+        this.renderStreams();
+        const container = this.viewMode === 'gallery' ? document.getElementById('streamsGrid') : document.getElementById('streamsList');
+        if (container) container.innerHTML = '<div class="no-streams">No streams added yet. Add some streams to get started!</div>';
+        
         this.updateHiddenStreamsList();
         
         this.showNotification('All streams cleared!', 'success');
@@ -1069,22 +1366,61 @@ class TwitchStreamViewer {
         return stored ? JSON.parse(stored) : null;
     }
     
-    loadHiddenStreamsFromStorage() {
+    loadHiddenStreamsByWorkspaceFromStorage() {
         try {
-            const stored = localStorage.getItem('twitchHiddenStreams');
-            return stored ? new Set(JSON.parse(stored)) : new Set();
+            const stored = localStorage.getItem('twitchHiddenStreamsByWorkspace');
+            if (stored) {
+                const obj = JSON.parse(stored);
+                const out = {};
+                Object.keys(obj).forEach(wsId => {
+                    out[wsId] = new Set(obj[wsId] || []);
+                });
+                return out;
+            }
+            const oldStored = localStorage.getItem('twitchHiddenStreams');
+            if (oldStored) {
+                const arr = JSON.parse(oldStored);
+                const wsId = this.currentWorkspaceId || Object.keys(this.workspaces || {})[0];
+                if (wsId) return { [wsId]: new Set(arr || []) };
+            }
+            return {};
         } catch (error) {
-            console.error('Error loading hidden streams from storage:', error);
-            return new Set();
+            console.error('Error loading hidden streams by workspace from storage:', error);
+            return {};
         }
     }
     
-    saveHiddenStreamsToStorage() {
+    saveHiddenStreamsByWorkspaceToStorage() {
         try {
-            localStorage.setItem('twitchHiddenStreams', JSON.stringify([...this.hiddenStreams]));
+            const obj = {};
+            Object.keys(this.hiddenStreamsByWorkspace || {}).forEach(wsId => {
+                obj[wsId] = [...this.hiddenStreamsByWorkspace[wsId]];
+            });
+            localStorage.setItem('twitchHiddenStreamsByWorkspace', JSON.stringify(obj));
         } catch (error) {
-            console.error('Error saving hidden streams to storage:', error);
+            console.error('Error saving hidden streams by workspace to storage:', error);
         }
+    }
+    
+    serializeHiddenStreamsByWorkspace() {
+        const obj = {};
+        Object.keys(this.hiddenStreamsByWorkspace || {}).forEach(wsId => {
+            obj[wsId] = [...this.hiddenStreamsByWorkspace[wsId]];
+        });
+        return obj;
+    }
+    
+    parseHiddenStreamsByWorkspace(byWorkspace, currentWorkspaceId) {
+        if (byWorkspace && typeof byWorkspace === 'object' && !Array.isArray(byWorkspace)) {
+            const out = {};
+            Object.keys(byWorkspace).forEach(wsId => {
+                out[wsId] = new Set(byWorkspace[wsId] || []);
+            });
+            return out;
+        }
+        const arr = Array.isArray(byWorkspace) ? byWorkspace : [];
+        const wsId = currentWorkspaceId || (this.workspaces && Object.keys(this.workspaces)[0]);
+        return wsId ? { [wsId]: new Set(arr) } : {};
     }
     
     loadFoldersFromStorage() {
@@ -1123,6 +1459,24 @@ class TwitchStreamViewer {
         }
     }
     
+    loadFolderStreamersFromStorage() {
+        try {
+            const stored = localStorage.getItem('twitchFolderStreamers');
+            return stored ? JSON.parse(stored) : null;
+        } catch (error) {
+            console.error('Error loading folder streamers from storage:', error);
+            return null;
+        }
+    }
+    
+    saveFolderStreamersToStorage() {
+        try {
+            localStorage.setItem('twitchFolderStreamers', JSON.stringify(this.folderStreamers));
+        } catch (error) {
+            console.error('Error saving folder streamers to storage:', error);
+        }
+    }
+    
     loadFolderStatesFromStorage() {
         try {
             const stored = localStorage.getItem('twitchFolderStates');
@@ -1139,6 +1493,353 @@ class TwitchStreamViewer {
         } catch (error) {
             console.error('Error saving folder states to storage:', error);
         }
+    }
+    
+    loadWorkspacesFromStorage() {
+        try {
+            const stored = localStorage.getItem('twitchWorkspaces');
+            return stored ? JSON.parse(stored) : null;
+        } catch (error) {
+            console.error('Error loading workspaces from storage:', error);
+            return null;
+        }
+    }
+    
+    saveWorkspacesToStorage() {
+        try {
+            localStorage.setItem('twitchWorkspaces', JSON.stringify(this.workspaces));
+        } catch (error) {
+            console.error('Error saving workspaces to storage:', error);
+        }
+    }
+    
+    loadFolderWorkspaceFromStorage() {
+        try {
+            const stored = localStorage.getItem('twitchFolderWorkspace');
+            return stored ? JSON.parse(stored) : null;
+        } catch (error) {
+            console.error('Error loading folder-workspace from storage:', error);
+            return null;
+        }
+    }
+    
+    saveFolderWorkspaceToStorage() {
+        try {
+            localStorage.setItem('twitchFolderWorkspace', JSON.stringify(this.folderWorkspace));
+        } catch (error) {
+            console.error('Error saving folder-workspace to storage:', error);
+        }
+    }
+    
+    loadCurrentWorkspaceIdFromStorage() {
+        return localStorage.getItem('twitchCurrentWorkspaceId') || null;
+    }
+    
+    loadViewModeFromStorage() {
+        const stored = localStorage.getItem('twitchViewMode');
+        return stored === 'list' || stored === 'gallery' ? stored : null;
+    }
+    
+    saveViewModeToStorage() {
+        localStorage.setItem('twitchViewMode', this.viewMode);
+    }
+    
+    saveCurrentWorkspaceIdToStorage() {
+        if (this.currentWorkspaceId) {
+            localStorage.setItem('twitchCurrentWorkspaceId', this.currentWorkspaceId);
+        }
+    }
+    
+    getFolderNamesInWorkspace(workspaceId) {
+        if (!workspaceId) return [];
+        return Object.keys(this.folders || {}).filter(
+            folderName => this.folderWorkspace[folderName] === workspaceId
+        );
+    }
+    
+    ensureFolderStreamersFromStreamFolders() {
+        if (Object.keys(this.folderStreamers).length > 0) return;
+        Object.keys(this.streamFolders || {}).forEach(streamId => {
+            const folderName = this.streamFolders[streamId];
+            if (folderName) {
+                if (!this.folderStreamers[folderName]) this.folderStreamers[folderName] = [];
+                if (!this.folderStreamers[folderName].includes(streamId)) {
+                    this.folderStreamers[folderName].push(streamId);
+                }
+            }
+        });
+        this.saveFolderStreamersToStorage();
+    }
+    
+    isStreamInFolder(streamId, folderName) {
+        return (this.folderStreamers[folderName] || []).includes(streamId);
+    }
+    
+    isStreamInNoFolder(streamId) {
+        return this.streamers.includes(streamId) && !Object.values(this.folderStreamers).flat().includes(streamId);
+    }
+    
+    streamBelongsToCurrentWorkspace(streamId) {
+        if (!this.currentWorkspaceId || !this.workspaces[this.currentWorkspaceId]) return true;
+        const folderNamesInWs = this.getFolderNamesInWorkspace(this.currentWorkspaceId);
+        const inWorkspaceFolder = folderNamesInWs.some(f => (this.folderStreamers[f] || []).includes(streamId));
+        if (inWorkspaceFolder) return true;
+        return this.isStreamInNoFolder(streamId);
+    }
+    
+    getStreamDisplayFolder(streamId) {
+        const folderNamesInWs = this.getFolderNamesInWorkspace(this.currentWorkspaceId);
+        return folderNamesInWs.find(f => (this.folderStreamers[f] || []).includes(streamId)) || null;
+    }
+    
+    populateWorkspaceSelect() {
+        const select = document.getElementById('workspaceSelect');
+        const currentId = select.value;
+        select.innerHTML = '<option value="">— Select —</option>';
+        Object.keys(this.workspaces).sort((a, b) => {
+            const na = (this.workspaces[a].name || '').toLowerCase();
+            const nb = (this.workspaces[b].name || '').toLowerCase();
+            return na.localeCompare(nb);
+        }).forEach(wsId => {
+            const option = document.createElement('option');
+            option.value = wsId;
+            option.textContent = this.workspaces[wsId].name || wsId;
+            if (wsId === this.currentWorkspaceId) option.selected = true;
+            select.appendChild(option);
+        });
+        if (!this.currentWorkspaceId && select.options.length > 1) {
+            select.selectedIndex = 1;
+            this.currentWorkspaceId = select.value;
+            this.saveCurrentWorkspaceIdToStorage();
+        }
+    }
+    
+    updateHeaderWorkspaceTitle() {
+        const el = document.getElementById('headerWorkspaceTitle');
+        if (!el) return;
+        if (this.currentWorkspaceId && this.workspaces[this.currentWorkspaceId]) {
+            el.textContent = this.workspaces[this.currentWorkspaceId].name || this.currentWorkspaceId;
+            el.style.display = '';
+        } else {
+            el.textContent = '';
+            el.style.display = 'none';
+        }
+    }
+    
+    showAddWorkspacePopup() {
+        this.workspaceNamePopupMode = 'add';
+        document.getElementById('workspaceNamePopupTitle').textContent = 'Add Workspace';
+        document.getElementById('workspaceNameInput').value = '';
+        document.getElementById('workspaceNamePopup').style.display = 'flex';
+        document.getElementById('workspaceNameInput').focus();
+    }
+    
+    showRenameWorkspacePopup(workspaceId) {
+        const id = workspaceId !== undefined ? workspaceId : this.currentWorkspaceId;
+        if (!id || !this.workspaces[id]) return;
+        this.workspaceNamePopupMode = 'rename';
+        this.workspaceIdForRename = id;
+        document.getElementById('workspaceNamePopupTitle').textContent = 'Rename Workspace';
+        document.getElementById('workspaceNameInput').value = this.workspaces[id].name || '';
+        document.getElementById('workspaceNamePopup').style.display = 'flex';
+        document.getElementById('workspaceNameInput').focus();
+    }
+    
+    closeWorkspaceNamePopup() {
+        document.getElementById('workspaceNamePopup').style.display = 'none';
+        this.workspaceIdForRename = null;
+    }
+    
+    showWorkspaceManagementPopup() {
+        document.getElementById('workspaceManagementNewName').value = '';
+        this.refreshWorkspaceManagementList();
+        document.getElementById('workspaceManagementPopup').style.display = 'flex';
+        document.getElementById('workspaceManagementNewName').focus();
+    }
+    
+    closeWorkspaceManagementPopup() {
+        document.getElementById('workspaceManagementPopup').style.display = 'none';
+    }
+    
+    refreshWorkspaceManagementList() {
+        const listEl = document.getElementById('workspaceManagementList');
+        listEl.innerHTML = '';
+        const workspaceIds = Object.keys(this.workspaces || {}).sort((a, b) => {
+            const na = (this.workspaces[a].name || '').toLowerCase();
+            const nb = (this.workspaces[b].name || '').toLowerCase();
+            return na.localeCompare(nb);
+        });
+        if (workspaceIds.length === 0) {
+            listEl.appendChild(document.createTextNode('No workspaces yet. Create one above.'));
+            return;
+        }
+        workspaceIds.forEach(wsId => {
+            const row = document.createElement('div');
+            row.className = 'workspace-management-row';
+            row.dataset.workspaceId = wsId;
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'workspace-management-name';
+            nameSpan.textContent = this.workspaces[wsId].name || wsId;
+            const actions = document.createElement('div');
+            actions.className = 'workspace-management-actions';
+            const renameBtn = document.createElement('button');
+            renameBtn.type = 'button';
+            renameBtn.className = 'btn btn-small btn-secondary';
+            renameBtn.textContent = 'Rename';
+            renameBtn.addEventListener('click', () => {
+                this.showRenameWorkspacePopup(wsId);
+            });
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'btn btn-small btn-danger-secondary';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.addEventListener('click', () => {
+                this.showDeleteWorkspacePopup(wsId);
+            });
+            actions.appendChild(renameBtn);
+            actions.appendChild(deleteBtn);
+            row.appendChild(nameSpan);
+            row.appendChild(actions);
+            listEl.appendChild(row);
+        });
+    }
+    
+    createWorkspaceFromManagement() {
+        const input = document.getElementById('workspaceManagementNewName');
+        const name = input.value.trim();
+        if (!name) {
+            this.showNotification('Please enter a workspace name.', 'error');
+            return;
+        }
+        const id = 'ws-' + Date.now();
+        this.workspaces[id] = { name };
+        this.saveWorkspacesToStorage();
+        this.currentWorkspaceId = id;
+        this.saveCurrentWorkspaceIdToStorage();
+            this.populateWorkspaceSelect();
+            this.updateHeaderWorkspaceTitle();
+            this.updateHiddenStreamsList();
+            input.value = '';
+        this.refreshWorkspaceManagementList();
+        this.showNotification(`Workspace "${name}" created.`, 'success');
+    }
+    
+    confirmWorkspaceNamePopup() {
+        const input = document.getElementById('workspaceNameInput');
+        const name = input.value.trim();
+        if (!name) {
+            this.showNotification('Please enter a name.', 'error');
+            return;
+        }
+        if (this.workspaceNamePopupMode === 'add') {
+            const id = 'ws-' + Date.now();
+            this.workspaces[id] = { name };
+            this.saveWorkspacesToStorage();
+            this.currentWorkspaceId = id;
+            this.saveCurrentWorkspaceIdToStorage();
+            this.populateWorkspaceSelect();
+            this.updateHeaderWorkspaceTitle();
+            this.updateHiddenStreamsList();
+            this.showNotification(`Workspace "${name}" created.`, 'success');
+        } else if (this.workspaceNamePopupMode === 'rename' && this.workspaceIdForRename) {
+            this.workspaces[this.workspaceIdForRename].name = name;
+            this.saveWorkspacesToStorage();
+            this.populateWorkspaceSelect();
+            this.updateHeaderWorkspaceTitle();
+            this.updateHiddenStreamsList();
+            this.showNotification('Workspace renamed.', 'success');
+        }
+        this.closeWorkspaceNamePopup();
+        if (document.getElementById('workspaceManagementPopup').style.display === 'flex') {
+            this.refreshWorkspaceManagementList();
+        }
+    }
+    
+    showDeleteWorkspacePopup(workspaceId) {
+        const id = workspaceId !== undefined ? workspaceId : this.currentWorkspaceId;
+        if (!id || !this.workspaces[id]) return;
+        if (Object.keys(this.workspaces).length <= 1) {
+            this.showNotification('At least one workspace is required.', 'warning');
+            return;
+        }
+        this.workspaceIdForDeletion = id;
+        const ws = this.workspaces[id];
+        const name = ws ? ws.name : id;
+        const folderCount = this.getFolderNamesInWorkspace(id).length;
+        const msg = folderCount > 0
+            ? `Delete workspace "${name}"? Its ${folderCount} folder(s) will be deleted and streamers in them moved to "No Folder".`
+            : `Delete workspace "${name}"?`;
+        document.getElementById('deleteWorkspaceMessage').textContent = msg;
+        document.getElementById('deleteWorkspacePopup').style.display = 'flex';
+    }
+    
+    closeDeleteWorkspacePopup() {
+        document.getElementById('deleteWorkspacePopup').style.display = 'none';
+        this.workspaceIdForDeletion = null;
+        const cb = document.getElementById('deleteWorkspaceAlsoStreamers');
+        if (cb) cb.checked = false;
+    }
+    
+    confirmDeleteWorkspace() {
+        if (this.workspaceIdForDeletion) {
+            const alsoDeleteStreamers = document.getElementById('deleteWorkspaceAlsoStreamers').checked;
+            this.deleteWorkspace(this.workspaceIdForDeletion, alsoDeleteStreamers);
+        }
+        this.closeDeleteWorkspacePopup();
+    }
+    
+    deleteWorkspace(workspaceId, alsoDeleteStreamers = false) {
+        const folderNames = this.getFolderNamesInWorkspace(workspaceId);
+        const streamIdsInWorkspace = new Set();
+        folderNames.forEach(folderName => {
+            this.getStreamIdsInFolder(folderName).forEach(id => streamIdsInWorkspace.add(id));
+        });
+        if (alsoDeleteStreamers && streamIdsInWorkspace.size > 0) {
+            streamIdsInWorkspace.forEach(streamId => {
+                this.streamers = this.streamers.filter(s => s !== streamId);
+                this.streams = this.streams.filter(s => s.id !== streamId);
+                Object.keys(this.hiddenStreamsByWorkspace).forEach(wsId => {
+                    this.hiddenStreamsByWorkspace[wsId].delete(streamId);
+                });
+                Object.keys(this.folderStreamers).forEach(f => {
+                    this.folderStreamers[f] = (this.folderStreamers[f] || []).filter(id => id !== streamId);
+                    if (this.folderStreamers[f].length === 0) delete this.folderStreamers[f];
+                });
+                const el = document.getElementById(`stream-${streamId}`);
+                if (el) el.remove();
+            });
+            this.saveStreamersToStorage();
+            this.saveHiddenStreamsByWorkspaceToStorage();
+            this.saveFolderStreamersToStorage();
+        }
+        folderNames.forEach(folderName => {
+            delete this.folderStreamers[folderName];
+            delete this.folders[folderName];
+            delete this.folderStates[folderName];
+            delete this.folderWorkspace[folderName];
+        });
+        delete this.workspaces[workspaceId];
+        if (this.currentWorkspaceId === workspaceId) {
+            const remaining = Object.keys(this.workspaces);
+            this.currentWorkspaceId = remaining.length > 0 ? remaining[0] : null;
+            this.saveCurrentWorkspaceIdToStorage();
+        }
+        this.saveWorkspacesToStorage();
+        this.saveFoldersToStorage();
+        this.saveFolderStreamersToStorage();
+        this.saveFolderStatesToStorage();
+        this.saveFolderWorkspaceToStorage();
+        this.populateWorkspaceSelect();
+        this.updateHeaderWorkspaceTitle();
+        this.updateHiddenStreamsList();
+        this.streams.forEach(stream => {
+            const el = document.getElementById(`stream-${stream.id}`);
+            if (el) this.updateStreamFolderButton(el, stream.id);
+        });
+        if (document.getElementById('workspaceManagementPopup').style.display === 'flex') {
+            this.refreshWorkspaceManagementList();
+        }
+        this.showNotification('Workspace deleted.', 'success');
     }
     
     // Folder Management Functions
@@ -1163,6 +1864,104 @@ class TwitchStreamViewer {
         input.value = '';
     }
     
+    showRenameFolderPopup(folderName) {
+        this.folderNameForRename = folderName;
+        document.getElementById('renameFolderNameInput').value = folderName;
+        const select = document.getElementById('renameFolderWorkspaceSelect');
+        select.innerHTML = '<option value="">— Select —</option>';
+        const currentWsId = this.folderWorkspace[folderName];
+        Object.keys(this.workspaces || {}).sort((a, b) => {
+            const na = (this.workspaces[a].name || '').toLowerCase();
+            const nb = (this.workspaces[b].name || '').toLowerCase();
+            return na.localeCompare(nb);
+        }).forEach(wsId => {
+            const option = document.createElement('option');
+            option.value = wsId;
+            option.textContent = this.workspaces[wsId].name || wsId;
+            if (wsId === currentWsId) option.selected = true;
+            select.appendChild(option);
+        });
+        document.getElementById('renameFolderPopup').style.display = 'flex';
+        document.getElementById('renameFolderNameInput').focus();
+    }
+    
+    closeRenameFolderPopup() {
+        document.getElementById('renameFolderPopup').style.display = 'none';
+        this.folderNameForRename = null;
+    }
+    
+    confirmRenameFolder() {
+        const newName = document.getElementById('renameFolderNameInput').value.trim();
+        const newWorkspaceId = document.getElementById('renameFolderWorkspaceSelect').value;
+        if (!this.folderNameForRename) {
+            this.closeRenameFolderPopup();
+            return;
+        }
+        const oldName = this.folderNameForRename;
+        const finalName = newName || oldName;
+        if (!finalName) {
+            this.showNotification('Please enter a folder name.', 'error');
+            return;
+        }
+        if (finalName !== oldName && this.folders[finalName]) {
+            this.showNotification('A folder with that name already exists.', 'error');
+            return;
+        }
+        if (finalName !== oldName) {
+            this.renameFolder(oldName, finalName);
+        }
+        const previousWsId = this.folderWorkspace[finalName];
+        const didMove = newWorkspaceId && this.workspaces[newWorkspaceId] && previousWsId !== newWorkspaceId;
+        if (didMove) {
+            this.folderWorkspace[finalName] = newWorkspaceId;
+            this.saveFolderWorkspaceToStorage();
+            this.updateHiddenStreamsList();
+            this.streams.forEach(stream => {
+                const el = document.getElementById(`stream-${stream.id}`);
+                if (el) this.updateStreamFolderButton(el, stream.id);
+            });
+            this.renderStreams();
+        }
+        this.closeRenameFolderPopup();
+        const didRename = finalName !== oldName;
+        const msg = didRename && didMove
+            ? `Folder renamed to "${finalName}" and moved to workspace.`
+            : didRename
+                ? `Folder renamed to "${finalName}".`
+                : didMove
+                    ? 'Folder moved to workspace.'
+                    : '';
+        if (msg) this.showNotification(msg, 'success');
+    }
+    
+    renameFolder(oldName, newName) {
+        if (oldName === 'No Folder' || !this.folders[oldName]) return;
+        this.folders[newName] = this.folders[oldName];
+        delete this.folders[oldName];
+        if (this.folderStates[oldName] !== undefined) {
+            this.folderStates[newName] = this.folderStates[oldName];
+            delete this.folderStates[oldName];
+        }
+        if (this.folderWorkspace[oldName] !== undefined) {
+            this.folderWorkspace[newName] = this.folderWorkspace[oldName];
+            delete this.folderWorkspace[oldName];
+        }
+        if (this.folderStreamers[oldName]) {
+            this.folderStreamers[newName] = this.folderStreamers[oldName];
+            delete this.folderStreamers[oldName];
+        }
+        this.saveFoldersToStorage();
+        this.saveFolderStatesToStorage();
+        this.saveFolderWorkspaceToStorage();
+        this.saveFolderStreamersToStorage();
+        this.updateHiddenStreamsList();
+        this.streams.forEach(stream => {
+            const el = document.getElementById(`stream-${stream.id}`);
+            if (el) this.updateStreamFolderButton(el, stream.id);
+        });
+        this.showNotification(`Folder renamed to "${newName}".`, 'success');
+    }
+    
     createFolderFromPopup() {
         const input = document.getElementById('folderNameInput');
         const folderName = input.value.trim();
@@ -1177,12 +1976,14 @@ class TwitchStreamViewer {
             return;
         }
         
-        // Create new folder
+        // Create new folder in current workspace
         this.folders[folderName] = {
             name: folderName,
             created: new Date().toISOString()
         };
+        this.folderWorkspace[folderName] = this.currentWorkspaceId;
         this.saveFoldersToStorage();
+        this.saveFolderWorkspaceToStorage();
         
         this.updateHiddenStreamsList();
         this.showNotification(`Created folder: ${folderName}`, 'success');
@@ -1190,30 +1991,32 @@ class TwitchStreamViewer {
     }
     
     assignStreamToFolder(streamId, folderName) {
-        this.streamFolders[streamId] = folderName;
-        this.saveStreamFoldersToStorage();
-        
-        // Update the stream element
-        const streamElement = document.getElementById(`stream-${streamId}`);
-        if (streamElement) {
-            this.updateStreamFolderButton(streamElement, streamId);
+        if (!this.streamers.includes(streamId)) {
+            this.streamers.push(streamId);
+            this.saveStreamersToStorage();
         }
-        
+        if (!this.folderStreamers[folderName]) this.folderStreamers[folderName] = [];
+        if (!this.folderStreamers[folderName].includes(streamId)) {
+            this.folderStreamers[folderName].push(streamId);
+            this.saveFolderStreamersToStorage();
+        }
+        const streamElement = document.getElementById(`stream-${streamId}`);
+        if (streamElement) this.updateStreamFolderButton(streamElement, streamId);
         this.updateHiddenStreamsList();
+        this.renderStreams();
         this.showNotification(`Stream assigned to folder: ${folderName}`, 'success');
     }
     
-    removeStreamFromFolder(streamId) {
-        delete this.streamFolders[streamId];
-        this.saveStreamFoldersToStorage();
-        
-        // Update the stream element
-        const streamElement = document.getElementById(`stream-${streamId}`);
-        if (streamElement) {
-            this.updateStreamFolderButton(streamElement, streamId);
+    removeStreamFromFolder(streamId, folderName) {
+        if (this.folderStreamers[folderName]) {
+            this.folderStreamers[folderName] = this.folderStreamers[folderName].filter(id => id !== streamId);
+            if (this.folderStreamers[folderName].length === 0) delete this.folderStreamers[folderName];
+            this.saveFolderStreamersToStorage();
         }
-        
+        const streamElement = document.getElementById(`stream-${streamId}`);
+        if (streamElement) this.updateStreamFolderButton(streamElement, streamId);
         this.updateHiddenStreamsList();
+        this.renderStreams();
         this.showNotification('Stream removed from folder', 'success');
     }
     
@@ -1225,7 +2028,7 @@ class TwitchStreamViewer {
             existingFolderBtn.remove();
         }
         
-        const currentFolder = this.streamFolders[streamId];
+        const currentFolder = this.getStreamDisplayFolder(streamId);
         if (currentFolder) {
             // Show folder name
             const folderNameSpan = document.createElement('span');
@@ -1259,9 +2062,9 @@ class TwitchStreamViewer {
         const select = document.getElementById('folderSelect');
         select.innerHTML = '<option value="">Choose a folder...</option>';
         
-        const currentFolder = this.streamFolders[this.currentStreamForFolder];
+        const currentFolder = this.getStreamDisplayFolder(this.currentStreamForFolder);
         
-        Object.keys(this.folders).sort().forEach(folderName => {
+        this.getFolderNamesInWorkspace(this.currentWorkspaceId).sort().forEach(folderName => {
             const option = document.createElement('option');
             option.value = folderName;
             option.textContent = folderName;
@@ -1276,10 +2079,9 @@ class TwitchStreamViewer {
         const popup = document.getElementById('folderPopup');
         popup.style.display = 'flex';
         
-        // Update button states
-        const currentFolder = this.streamFolders[this.currentStreamForFolder];
+        const inAnyFolder = this.getStreamDisplayFolder(this.currentStreamForFolder) != null;
         const removeBtn = document.getElementById('removeFromFolder');
-        removeBtn.style.display = currentFolder ? 'block' : 'none';
+        removeBtn.style.display = inAnyFolder ? 'block' : 'none';
     }
     
     closeFolderPopup() {
@@ -1302,7 +2104,12 @@ class TwitchStreamViewer {
     }
     
     removeFromSelectedFolder() {
-        this.removeStreamFromFolder(this.currentStreamForFolder);
+        const selectedFolder = document.getElementById('folderSelect').value;
+        if (!selectedFolder) {
+            this.showNotification('Select a folder to remove the stream from.', 'error');
+            return;
+        }
+        this.removeStreamFromFolder(this.currentStreamForFolder, selectedFolder);
         this.closeFolderPopup();
     }
     
